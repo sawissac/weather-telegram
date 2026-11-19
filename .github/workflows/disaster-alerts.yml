@@ -1,0 +1,63 @@
+# Free option: GitHub runs the check every ~5 minutes.
+# Put TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in: repo Settings -> Secrets and variables -> Actions -> Secrets.
+# Optional settings (AREA_KEYWORDS, HOME_LAT, ...) go under the "Variables" tab.
+# Note: GitHub can delay scheduled runs by several minutes at busy times, and turns
+# schedules off in repos with no activity for 60 days. For the fastest alerts use Docker.
+name: disaster-alerts
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: disaster-alerts
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore state
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            state.json
+            state.subscribers.json
+            state.muted.json
+          key: alert-state-${{ github.run_id }}
+          restore-keys: alert-state-
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Check feeds
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          COUNTRIES: ${{ vars.COUNTRIES || 'TH,ID' }}
+          ALERT_LANG: ${{ vars.ALERT_LANG || 'en' }}
+          MIN_SEVERITY: ${{ vars.MIN_SEVERITY || 'Severe' }}
+          AREA_KEYWORDS: ${{ vars.AREA_KEYWORDS }}
+          MIN_QUAKE_MAG: ${{ vars.MIN_QUAKE_MAG || '5.0' }}
+          HOME_LAT: ${{ vars.HOME_LAT }}
+          HOME_LON: ${{ vars.HOME_LON }}
+          QUAKE_RADIUS_KM: ${{ vars.QUAKE_RADIUS_KM || '0' }}
+          HEARTBEAT_HOURS: ${{ vars.HEARTBEAT_HOURS || '24' }}
+          SOURCE_FAIL_ALERT_AFTER: "6"
+          STATE_FILE: state.json
+        run: python disaster_alert_bot.py --once
+
+      - name: Save state
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            state.json
+            state.subscribers.json
+            state.muted.json
+          key: alert-state-${{ github.run_id }}

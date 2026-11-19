@@ -1,0 +1,10 @@
+.env
+state.json
+state.subscribers.json
+*.subscribers.json.tmp
+state.muted.json
+*.muted.json.tmp
+state.json.tmp
+data/
+__pycache__/
+*.lock
