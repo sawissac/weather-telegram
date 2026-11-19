@@ -455,6 +455,7 @@ def parse_cap(alert: ET.Element, lang: str) -> dict:
         "identifier": _text(alert, "identifier"),
         "status": _text(alert, "status", "Actual"),
         "msg_type": _text(alert, "msgType", "Alert"),
+        "references": [r.split(",")[1] for r in _text(alert, "references").split() if r.count(",") >= 2],
         "event": _text(info, "event"),
         "urgency": _text(info, "urgency"),
         "severity": _text(info, "severity", "Unknown"),
@@ -551,6 +552,8 @@ def collect_cap_feed(source: str, url: str, cfg: Config, seen: dict) -> tuple[li
                 "urgency": cap["urgency"],
                 "certainty": cap["certainty"],
                 "msg_type": cap["msg_type"],
+                "cap_id": cap["identifier"],
+                "references": cap["references"],
                 "area": cap["area"],
                 "effective": cap["effective"],
                 "expires": cap["expires"],
@@ -1237,6 +1240,8 @@ def remember_active(state: dict, alerts: list[dict], now_ts: float, backlog: boo
     for a in alerts:
         if a["kind"] == "quake":
             continue
+        if (a.get("msg_type") or "").lower() == "cancel":
+            continue  # a cancellation is not an active warning; drop_superseded removes what it cancels
         expires = a.get("expires", "")
         if not parse_time(expires):
             # Bulletins have no expiry: count them as active for a while after they were issued.
@@ -1258,7 +1263,30 @@ def remember_active(state: dict, alerts: list[dict], now_ts: float, backlog: boo
             "icon": "📢" if a["kind"] == "bulletin" else SEVERITY_EMOJI.get(a["severity"], "⚪"),
             "expires": expires,
             "area": _trim(a.get("area", ""), 600),  # full area list, for /weather <province>
+            "cap_id": a.get("cap_id", ""),
         }
+
+
+def drop_superseded(state: dict, alerts: list[dict], cfg: Config) -> None:
+    """Remove active warnings that a Cancel or Update message replaces (CAP <references>).
+
+    Run after remember_active, so an original read in the same batch as its
+    cancellation (feeds list newest first) is removed too. Cancels count even if
+    they miss the filters; Updates only when they pass them (and so replace the
+    original in the active list)."""
+    active: dict = state.get("active", {})
+    gone: set[str] = set()   # "<source>:<cap identifier>"
+    for a in alerts:
+        mt = (a.get("msg_type") or "").lower()
+        if mt == "cancel" or (mt == "update" and should_notify(a, cfg)):
+            gone.update(f"{a['source']}:{ref}" for ref in a.get("references", []))
+    if not gone:
+        return
+    for key, entry in list(active.items()):
+        source = key.split(":", 1)[0]
+        # Entries from older state files have no cap_id; for embedded CAP feeds the key holds it
+        if key in gone or (entry.get("cap_id") and f"{source}:{entry['cap_id']}" in gone):
+            del active[key]
 
 
 def active_warnings(state: dict) -> list[dict]:
@@ -1633,6 +1661,7 @@ def run_cycle(cfg: Config, state: dict, notifier: Notifier, baseline: bool) -> i
         picked = [a for a in alerts if should_notify(a, cfg)]
         log(f"{name}: {len(ids)} new item(s), {len(picked)} match filters")
         remember_active(state, picked, now_ts, backlog=baseline or name not in state.get("primed", []))
+        drop_superseded(state, alerts, cfg)
 
         primed: list = state.setdefault("primed", [])
         if name not in primed:
@@ -1669,6 +1698,7 @@ def backfill_active(cfg: Config, state: dict) -> None:
             log(f"{name}: backfill skipped: {exc}")
             continue
         remember_active(state, [a for a in alerts if should_notify(a, cfg)], now_ts, backlog=True)
+        drop_superseded(state, alerts, cfg)
 
 
 def maybe_heartbeat(cfg: Config, state: dict, notifier: Notifier) -> None:

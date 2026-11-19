@@ -2,14 +2,14 @@
 
 Checks official government warning feeds every 2 minutes and sends new warnings to your Telegram.
 
-| Country | Source (official) | What it covers |
-|---|---|---|
-| 🇹🇭 Thailand | TMD CAP feed `tmd.go.th/en/api/xml/CAP` | Heavy rain, storms, strong wind/waves, with severity, area, expiry and instructions |
-| 🇹🇭 Thailand | TMD warning bulletins `tmd.go.th/en/api/xml/storm-tracking` | Numbered TMD warnings ("Heavy rain in the South No.9") |
-| 🇮🇩 Indonesia | BMKG CAP feed `cuaca.bmkg.go.id/.../cap/feed/en/rss.xml` | Extreme-weather early warnings |
-| 🇮🇩 Indonesia | BMKG InaTEWS CAP (Atom) | Earthquake and tsunami warnings |
-| 🇮🇩 Indonesia | BMKG open data `data.bmkg.go.id/DataMKG/TEWS/` | Latest earthquake + M5.0+ list, tsunami potential |
-| 🌏 Optional | USGS earthquake API | Quakes around Thailand/Myanmar. TMD has no public earthquake API, so USGS fills this gap. It is a US agency, not Thai. |
+| Country        | Source (official)                                             | What it covers                                                                                                         |
+| -------------- | ------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| 🇹🇭 Thailand  | TMD CAP feed `tmd.go.th/en/api/xml/CAP`                     | Heavy rain, storms, strong wind/waves, with severity, area, expiry and instructions                                    |
+| 🇹🇭 Thailand  | TMD warning bulletins `tmd.go.th/en/api/xml/storm-tracking` | Numbered TMD warnings ("Heavy rain in the South No.9")                                                                 |
+| 🇮🇩 Indonesia | BMKG CAP feed `cuaca.bmkg.go.id/.../cap/feed/en/rss.xml`    | Extreme-weather early warnings                                                                                         |
+| 🇮🇩 Indonesia | BMKG InaTEWS CAP (Atom)                                       | Earthquake and tsunami warnings                                                                                        |
+| 🇮🇩 Indonesia | BMKG open data `data.bmkg.go.id/DataMKG/TEWS/`              | Latest earthquake + M5.0+ list, tsunami potential                                                                      |
+| 🌏 Optional    | USGS earthquake API                                           | Quakes around Thailand/Myanmar. TMD has no public earthquake API, so USGS fills this gap. It is a US agency, not Thai. |
 
 No API keys are needed for any of these. BMKG asks you to credit BMKG as the source of its data.
 
@@ -39,15 +39,18 @@ If a big group hides join messages, the bot can't see who joined, but alerts sti
 ```bash
 python3 disaster_alert_bot.py --dry-run --once
 ```
+
 This prints what it would send without sending anything. Delete `state.json` afterwards so the real first run starts clean. Subscribed groups are kept in `state.subscribers.json` (and stopped ones in `state.muted.json`), so deleting `state.json` does not forget them.
 
 ## 3. Run it all the time (pick one)
 
 **A. Docker (fastest alerts: polls every 2 minutes)**
+
 ```bash
 docker compose up -d --build
 docker compose logs -f
 ```
+
 Run it on a machine that stays on, like a home server, a VPS or a Raspberry Pi. A laptop only works while it is awake.
 
 **B. GitHub Actions (free, no server, but checks only every ~5 minutes or slower)**
@@ -58,33 +61,33 @@ Push this folder to a **private** GitHub repo. Add `TELEGRAM_BOT_TOKEN` and `TEL
 
 ## Settings (in `.env`)
 
-| Setting | Default | Meaning |
-|---|---|---|
-| `COUNTRIES` | `TH,ID` | Which countries to watch |
-| `MIN_SEVERITY` | `Severe` | `Minor` / `Moderate` / `Severe` / `Extreme`. Use `Moderate` if you want more warnings. |
-| `AREA_KEYWORDS` | empty | e.g. `Chiang Mai,North,Jakarta`. Only warnings that mention these places are sent. |
-| `MIN_QUAKE_MAG` | `5.0` | Smallest earthquake to send |
-| `HOME_LAT` / `HOME_LON` | empty | Your location. Adds "≈ N km from you" to quake alerts. |
-| `QUAKE_RADIUS_KM` | `0` | Only quakes within this distance (0 = anywhere). Tsunami-potential quakes are **always** sent. |
-| `ALERT_LANG` | `en` | `local` = Thai TMD feed / Indonesian BMKG feed |
-| `HEARTBEAT_HOURS` | `24` | Sends a "still running" message to `TELEGRAM_CHAT_ID` so you know the bot is alive |
-| `AUTO_SUBSCRIBE` | `true` | Groups the bot is added to (and people who press Start) get alerts automatically. `false` = only `TELEGRAM_CHAT_ID` |
-| `WELCOME_NEW_MEMBERS` | `true` | Greet people who join a group with the warnings active right now |
+| Setting                     | Default    | Meaning                                                                                                                 |
+| --------------------------- | ---------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `COUNTRIES`               | `TH,ID`  | Which countries to watch                                                                                                |
+| `MIN_SEVERITY`            | `Severe` | `Minor` / `Moderate` / `Severe` / `Extreme`. Use `Moderate` if you want more warnings.                        |
+| `AREA_KEYWORDS`           | empty      | e.g. `Chiang Mai,North,Jakarta`. Only warnings that mention these places are sent.                                    |
+| `MIN_QUAKE_MAG`           | `5.0`    | Smallest earthquake to send                                                                                             |
+| `HOME_LAT` / `HOME_LON` | empty      | Your location. Adds "≈ N km from you" to quake alerts.                                                                 |
+| `QUAKE_RADIUS_KM`         | `0`      | Only quakes within this distance (0 = anywhere). Tsunami-potential quakes are **always** sent.                    |
+| `ALERT_LANG`              | `en`     | `local` = Thai TMD feed / Indonesian BMKG feed                                                                        |
+| `HEARTBEAT_HOURS`         | `24`     | Sends a "still running" message to `TELEGRAM_CHAT_ID` so you know the bot is alive                                    |
+| `AUTO_SUBSCRIBE`          | `true`   | Groups the bot is added to (and people who press Start) get alerts automatically. `false` = only `TELEGRAM_CHAT_ID` |
+| `WELCOME_NEW_MEMBERS`     | `true`   | Greet people who join a group with the warnings active right now                                                        |
 
 ## Bot commands
 
 Commands are optional: alerts arrive without them. The bot answers `TELEGRAM_CHAT_ID` and groups it is subscribed to.
 
-| Command | Reply |
-|---|---|
+| Command                                               | Reply                                                                                                                                                                                                      |
+| ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `/weather Chiang Mai` (or just send `Chiang Mai`) | Weather now, the next 3 days, and the official warnings for that province. Accepts Thai and Indonesian province names, English names (`West Java`) and big towns (`Bandung`, `Pattaya`, `Hat Yai`) |
-| `/warnings` | Every official warning active right now |
-| `/stop` | Stop alerts **and** replies in this chat. In a group only admins can use it. The bot stays in the group but stays silent |
-| `/resume` | Turn a stopped chat back on |
-| `/chats` (from your own `TELEGRAM_CHAT_ID` chat) | Lists every group getting alerts and every stopped one, with ids. Then `/stop -100…` or `/resume -100…` controls a group without being in it |
-| `/country_list_province` | All 77 Thai and 38 Indonesian provinces, grouped by region, with ✅ next to the ones your `AREA_KEYWORDS` match |
-| `/country_list_province TH` or `ID` | One country only |
-| `/help` | Short help |
+| `/warnings`                                         | Every official warning active right now                                                                                                                                                                    |
+| `/stop`                                             | Stop alerts **and** replies in this chat. In a group only admins can use it. The bot stays in the group but stays silent                                                                             |
+| `/resume`                                           | Turn a stopped chat back on                                                                                                                                                                                |
+| `/chats` (from your own `TELEGRAM_CHAT_ID` chat)  | Lists every group getting alerts and every stopped one, with ids. Then `/stop -100…` or `/resume -100…` controls a group without being in it                                                         |
+| `/country_list_province`                            | All 77 Thai and 38 Indonesian provinces, grouped by region, with ✅ next to the ones your `AREA_KEYWORDS` match                                                                                          |
+| `/country_list_province TH` or `ID`               | One country only                                                                                                                                                                                           |
+| `/help`                                             | Short help                                                                                                                                                                                                 |
 
 Telegram command names can't contain `-`, so the menu shows `/country_list_province`. If you type `/country-list-provience`, that works too. Indonesian provinces are listed by the Indonesian names BMKG uses in its warnings (for example `Jawa Barat`), so copy those into `AREA_KEYWORDS`. Area matching ignores spaces and the Si/Sri spelling difference.
 
@@ -103,6 +106,7 @@ Note: once the bot is running it marks Telegram messages as read, so `--get-chat
 ## Important
 
 This bot is an **extra** layer, not a replacement for official warnings. Feeds can be late or down. Keep these on too:
+
 - 🇹🇭 **T-Alert** cell broadcast on your phone, the **Thai Disaster Alert** app (NDWC), and **EarthquakeTMD** (app + Telegram channel)
 - 🇮🇩 The **Info BMKG** app
 
@@ -111,6 +115,7 @@ This bot is an **extra** layer, not a replacement for official warnings. Feeds c
 A Telegram bot is free and takes 2 minutes to set up. A WhatsApp bot needs a Meta Business account and the WhatsApp Cloud API. Proactive messages there must use pre-approved templates and can cost money. LINE Notify was shut down in 2025. If you want, you can add a WhatsApp or LINE Messaging API sender to the `Notifier` class later.
 
 ## Tests
+
 ```bash
 python3 -m unittest discover -s tests -v
 ```
