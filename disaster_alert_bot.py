@@ -517,12 +517,22 @@ def alert_map_url(alert: dict) -> str:
 # Only entries not already in `seen` are processed, so linked CAP files are
 # downloaded once per alert, not every poll.
 # --------------------------------------------------------------------------
+def _already_seen(seen: dict, key: str) -> bool:
+    """True if the item was handled before. Refreshes its time, so items a feed keeps
+    listing (TMD's bulletin archive, BMKG's recent-quake list) are never pruned from
+    `seen` while still listed, and so never sent again."""
+    if key in seen:
+        seen[key] = time.time()
+        return True
+    return False
+
+
 def collect_cap_feed(source: str, url: str, cfg: Config, seen: dict) -> tuple[list[dict], list[str]]:
     entries = parse_feed(http_get(url, cfg))
     alerts, ids = [], []
     for e in entries:
         key = f"{source}:{e['id']}"
-        if not e["id"] or key in seen:
+        if not e["id"] or _already_seen(seen, key):
             continue
         ids.append(key)
 
@@ -591,7 +601,7 @@ def collect_tmd_bulletins(cfg: Config, seen: dict) -> tuple[list[dict], list[str
     alerts, ids = [], []
     for e in entries:
         key = f"tmd_storm:{e['id']}"
-        if not e["id"] or key in seen:
+        if not e["id"] or _already_seen(seen, key):
             continue
         ids.append(key)
         alerts.append({
@@ -631,7 +641,7 @@ def collect_bmkg_quakes(cfg: Config, seen: dict) -> tuple[list[dict], list[str]]
     for q in quakes:
         qid = q.get("DateTime") or f"{q.get('Tanggal')} {q.get('Jam')}"
         key = f"bmkg_quake:{qid}"
-        if key in seen or key in ids:
+        if key in ids or _already_seen(seen, key):
             continue
         ids.append(key)
         try:
@@ -677,7 +687,7 @@ def collect_usgs(cfg: Config, seen: dict) -> tuple[list[dict], list[str]]:
     alerts, ids = [], []
     for f in data.get("features", []):
         key = f"usgs:{f.get('id')}"
-        if key in seen:
+        if _already_seen(seen, key):
             continue
         ids.append(key)
         p = f.get("properties", {})
@@ -871,9 +881,12 @@ class Notifier:
             print(text)
             print("----------------------")
             return True
-        targets = chat_ids or self.targets()
+        # An explicit empty list (e.g. cfg.chat_ids when TELEGRAM_CHAT_ID is unset) means "nobody",
+        # not "everybody": owner-only notices must not go out to every group.
+        targets = self.targets() if chat_ids is None else chat_ids
         if not targets:
-            log("No chat to send to yet: add the bot to a Telegram group (or set TELEGRAM_CHAT_ID)")
+            if chat_ids is None:
+                log("No chat to send to yet: add the bot to a Telegram group (or set TELEGRAM_CHAT_ID)")
             return False
         ok = True
         for chat_id in targets:
@@ -905,6 +918,9 @@ class Notifier:
                 log(f"Telegram error for chat {chat_id}: {res.get('description')}")
                 ok = False
                 break
+            else:  # all attempts used up (network errors / rate limits) without success
+                log(f"Telegram send to chat {chat_id} failed after retries: {res.get('description')}")
+                ok = False
             time.sleep(0.4)  # stay well under Telegram rate limits
         return ok
 
@@ -1173,14 +1189,19 @@ def province_warnings(state: dict, province: tuple[str, str, str]) -> list[dict]
     code, feed_name, _ = province
     find_province(feed_name)  # builds the index
     keys = {k for k, e in _PROVINCE_INDEX.items() if e[1] == feed_name and len(k) >= 4}  # "jakarta" for DKI Jakarta
+    # Short names ("Tak", "Nan") would match inside other words: match them as whole words instead
+    short = re.compile(rf"\b{re.escape(feed_name.lower())}\b") if len(_norm_area(feed_name)) < 4 else None
     region_word = ""
     for region, provinces in PROVINCES[code]["regions"]:
         if any(p.partition(" (")[0] == feed_name for p in provinces):
             region_word = region.split()[0].lower()
+    flag = PROVINCES[code]["flag"]
     out = []
     for a in active_warnings(state):
+        if a.get("flag") and a["flag"] != flag:
+            continue  # other country ("South" must not pull Indonesian warnings into Phuket)
         text = f"{a.get('title', '')} {a.get('area', '')}"
-        if any(k in _norm_area(text) for k in keys):
+        if any(k in _norm_area(text) for k in keys) or (short and short.search(text.lower())):
             out.append(a)
         elif code == "TH" and region_word and re.search(rf"\b{re.escape(region_word)}\b", text.lower()):
             out.append(a)
